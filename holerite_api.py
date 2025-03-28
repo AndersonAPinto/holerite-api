@@ -55,39 +55,37 @@ def infer_dynamic_fields(text):
         campos["referencia"] = ref_match.group(1)
     return campos
 
-def process_pdf_adaptativo(filepath):
+def process_pdf_dinamico(filepath):
+    from collections import Counter
+
+    def parser_heuristico(text):
+        campos = {}
+        matches = re.findall(r"([A-ZÀ-Ú][A-ZÀ-Ú\s/\-]{2,})[:\s]+([^\n]+)", text)
+        for key, value in matches:
+            key = key.strip().lower().replace(" ", "_").replace("-", "_").replace("/", "_")
+            value = value.strip()
+            if len(key) > 2 and key not in campos:
+                campos[key] = value
+        return campos
+
     doc = fitz.open(filepath)
-    resumo_list = []
-    detalhamento_list = []
+    registros = []
+    field_counter = Counter()
 
     for i, page in enumerate(doc):
         text = page.get_text()
-        campos = infer_dynamic_fields(text)
-        resumo_list.append(campos)
+        campos = parser_heuristico(text)
+        registros.append(campos)
+        field_counter.update(campos.keys())
 
-        nome_ref = campos.get("nome", f"pagina_{i+1}")
+    campos_frequentes = [k for k, v in field_counter.items() if v >= 3]
+    linhas_normalizadas = []
+    for reg in registros:
+        linha = {k: reg.get(k, None) for k in campos_frequentes}
+        linhas_normalizadas.append(linha)
 
-        blocos = re.split(r"C[oó]digo\s+Descri[cç][aã]o\s+Valor", text, flags=re.IGNORECASE)
-        tabelas = []
-
-        for bloco in blocos[1:]:
-            linhas = bloco.strip().split("\n")
-            conteudo = []
-            for linha in linhas:
-                if re.match(r"\d{2,5}\s+.+?\s+[\d.,]+", linha.strip()):
-                    conteudo.append(linha)
-                else:
-                    break
-            tabelas.append("\n".join(conteudo))
-
-        if len(tabelas) > 0:
-            detalhamento_list.extend(extract_items(tabelas[0], "provento", nome_ref))
-        if len(tabelas) > 1:
-            detalhamento_list.extend(extract_items(tabelas[1], "desconto", nome_ref))
-
-    df_resumo = pd.DataFrame(resumo_list)
-    df_detalhamento = pd.DataFrame(detalhamento_list)
-    return df_resumo, df_detalhamento
+    df_final = pd.DataFrame(linhas_normalizadas)
+    return df_final
 
 @app.route('/processar-holerite', methods=['POST'])
 def processar_holerite():
@@ -101,12 +99,13 @@ def processar_holerite():
         pdf_path = tmp_pdf.name
 
     try:
-        df_resumo, df_detalhamento = process_pdf_adaptativo(pdf_path)
+        df_final = process_pdf_dinamico(pdf_path)
 
         output_path = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
         with pd.ExcelWriter(output_path, engine='xlsxwriter') as writer:
-            df_resumo.to_excel(writer, sheet_name='resumo', index=False)
-            df_detalhamento.to_excel(writer, sheet_name='detalhamento', index=False)
+            df_final.to_excel(writer, index=False)
+            #df_resumo.to_excel(writer, sheet_name='resumo', index=False)
+            #df_detalhamento.to_excel(writer, sheet_name='detalhamento', index=False)
 
         return send_file(output_path,
                          as_attachment=True,
