@@ -13,7 +13,6 @@ def extrair_lancamentos(texto, nome):
 
     for linha in texto.splitlines():
         linha = linha.strip()
-
         if "TOTAL DE PROVENTOS" in linha:
             tipo_atual = "desconto"
             continue
@@ -28,7 +27,6 @@ def extrair_lancamentos(texto, nome):
                 "valor": match.group(4).replace('.', '').replace(',', '.'),
                 "nome": nome
             })
-
     return lancamentos
 
 def extrair_dados_pessoais(texto):
@@ -43,7 +41,7 @@ def extrair_dados_pessoais(texto):
     if match_cnpj:
         dados["cnpj"] = match_cnpj.group(1)
 
-    match_admissao = re.search(r"Admitido em:\s+(\d{2}/\d{2}/\d{4})", texto)
+    match_admissao = re.search(r"Admitido em:\s*(\d{2}/\d{2}/\d{4})", texto)
     if match_admissao:
         dados["admissao"] = match_admissao.group(1)
 
@@ -71,7 +69,7 @@ def extrair_dados_pessoais(texto):
     if match_total_descontos:
         dados["total_descontos"] = match_total_descontos.group(1)
 
-    match_liquido = re.search(r"L[ií]quido a Receber =>\s+([\d.,]+)", texto)
+    match_liquido = re.search(r"L[ií]quido a Receber\s*=>?\s*([\d.,]+)", texto)
     if match_liquido:
         dados["liquido"] = match_liquido.group(1)
 
@@ -79,11 +77,17 @@ def extrair_dados_pessoais(texto):
     if match_conta:
         dados["conta"] = match_conta.group(1)
 
+    # Tenta capturar o ano e mês do início da folha
+    match_competencia = re.search(r"\b(\d{4})\s+(\d{1,2})\b", texto)
+    if match_competencia:
+        dados["ano"] = match_competencia.group(1)
+        dados["mes"] = match_competencia.group(2).zfill(2)
+
     return dados
 
 @app.route('/')
 def home():
-    return "API de holerites estruturada com dados pessoais e lançamentos!"
+    return "API de holerites página a página funcionando!"
 
 @app.route('/processar-holerite', methods=['POST'])
 def processar_holerite():
@@ -101,24 +105,27 @@ def processar_holerite():
         lancamentos_list = []
 
         for page in doc:
-            text = page.get_text()
-            dados_pessoais = extrair_dados_pessoais(text)
-            if "nome" in dados_pessoais:
-                lancamentos = extrair_lancamentos(text, dados_pessoais["nome"])
-                lancamentos_list.extend(lancamentos)
-            dados_pessoais_list.append(dados_pessoais)
+            texto = page.get_text()
+            dados = extrair_dados_pessoais(texto)
+            nome = dados.get("nome", "Desconhecido")
+            lancamentos = extrair_lancamentos(texto, nome)
 
-        df_dados_pessoais = pd.DataFrame(dados_pessoais_list)
+            if dados:
+                dados_pessoais_list.append(dados)
+            if lancamentos:
+                lancamentos_list.extend(lancamentos)
+
+        df_pessoais = pd.DataFrame(dados_pessoais_list)
         df_lancamentos = pd.DataFrame(lancamentos_list)
 
         output_path = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx").name
         with pd.ExcelWriter(output_path, engine='xlsxwriter') as writer:
-            df_dados_pessoais.to_excel(writer, sheet_name="Dados Pessoais", index=False)
+            df_pessoais.to_excel(writer, sheet_name="Dados Pessoais", index=False)
             df_lancamentos.to_excel(writer, sheet_name="Demonstrativo", index=False)
 
         return send_file(output_path,
                          as_attachment=True,
-                         download_name="holerites_estruturado.xlsx",
+                         download_name="holerites_paginas.xlsx",
                          mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     except Exception as e:
         return jsonify({'error': str(e)}), 500
