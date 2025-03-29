@@ -8,4 +8,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 EXPOSE 5000
 
-CMD ["python", "holerite_api.py"]
+CMD ["python", "holerite_parser_estruturado.py"]

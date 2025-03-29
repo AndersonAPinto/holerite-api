@@ -87,7 +87,7 @@ def process_pdf_dinamico(filepath):
     df_final = pd.DataFrame(linhas_normalizadas)
     return df_final
 
-@app.route('/processar-holerite', methods=['POST'])
+@app.route('/processar-holerite/', methods=['POST'])
 def processar_holerite():
     if 'file' not in request.files:
         return jsonify({'error': 'Arquivo não enviado'}), 400
