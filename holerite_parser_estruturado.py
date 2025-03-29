@@ -71,7 +71,7 @@ def extrair_resumo(texto):
 def home():
     return "API de holerites estruturada funcionando!"
 
-@app.route('/processar-holerite', methods=['POST'])
+@app.route('/processar-holerite/', methods=['POST'])
 def processar_holerite():
     if 'file' not in request.files:
         return jsonify({'error': 'Arquivo não enviado'}), 400
